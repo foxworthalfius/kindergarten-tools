@@ -5,7 +5,7 @@ FastAPI web app for Priya (kindergarten assistant teacher)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from PIL import Image, ImageDraw, ImageFont
@@ -14,6 +14,11 @@ from io import BytesIO
 import random
 import json
 from datetime import datetime
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 app = FastAPI(title="Kindergarten Teacher Tools", version="1.0.0")
 
@@ -793,6 +798,81 @@ async def get_activity_image(activity: str = "Freeze Dance"):
     except Exception as e:
         raise HTTPException(500, f"Error generating image: {str(e)}")
 
+@app.post("/api/generate-worksheet-pdf")
+async def generate_worksheet_pdf(idea: str, category: str = "letters", difficulty: str = "easy"):
+    """Generate a PDF worksheet from a worksheet idea"""
+    try:
+        from reportlab.pdfgen import canvas as pdf_canvas
+        
+        # Create PDF buffer
+        pdf_buf = BytesIO()
+        c = pdf_canvas.Canvas(pdf_buf, pagesize=letter)
+        width, height = letter
+        
+        # Title
+        c.setFont("Helvetica-Bold", 24)
+        c.drawString(40, height - 40, f"📝 {category.title()} Worksheet")
+        
+        # Difficulty level
+        c.setFont("Helvetica", 12)
+        c.drawString(40, height - 70, f"Difficulty: {difficulty.capitalize()}")
+        c.drawString(40, height - 90, f"Date: {datetime.now().strftime('%B %d, %Y')}")
+        
+        # Idea content
+        c.setFont("Helvetica", 14)
+        c.drawString(40, height - 130, "Activity:")
+        
+        # Word wrap the idea
+        c.setFont("Helvetica", 12)
+        words = idea.split()
+        y_position = height - 160
+        line = []
+        for word in words:
+            test_line = ' '.join(line + [word])
+            if c.stringWidth(test_line, "Helvetica", 12) > 500:
+                c.drawString(60, y_position, ' '.join(line))
+                y_position -= 20
+                line = [word]
+            else:
+                line.append(word)
+        if line:
+            c.drawString(60, y_position, ' '.join(line))
+        
+        # Instructions box
+        y_position -= 60
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(40, y_position, "Instructions for Classroom Use:")
+        
+        c.setFont("Helvetica", 10)
+        instructions = [
+            "1. Print this worksheet for each student",
+            "2. Provide pencils, crayons, or markers as needed",
+            "3. Read the instructions aloud to the class",
+            "4. Allow students time to complete the activity",
+            "5. Review and celebrate their work!"
+        ]
+        
+        y_position -= 20
+        for instruction in instructions:
+            c.drawString(60, y_position, instruction)
+            y_position -= 15
+        
+        # Footer
+        c.setFont("Helvetica", 9)
+        c.drawString(40, 30, "Created with ❤️ Kindergarten Teacher Tools | www.kindergarten-tools.local")
+        
+        c.save()
+        pdf_buf.seek(0)
+        
+        filename = f"worksheet_{category}_{difficulty}.pdf"
+        return StreamingResponse(
+            iter([pdf_buf.getvalue()]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Error generating PDF: {str(e)}")
+
 # =====================
 # WEB PAGE
 # =====================
@@ -1102,15 +1182,42 @@ def get_home_page() -> str:
                 const res = await fetch(`/api/worksheets?category=${currentWsCategory}&difficulty=${difficulty}&count=${count}`);
                 const data = await res.json();
                 
-                container.innerHTML = data.ideas.map(idea => `
-                    <div class="idea">
-                        <span class="tag">${currentWsCategory}</span>
-                        <span class="tag">${difficulty}</span>
-                        <p>${idea}</p>
+                container.innerHTML = data.ideas.map((idea, idx) => `
+                    <div class="idea" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 15px;">
+                        <div style="flex: 1;">
+                            <span class="tag">${currentWsCategory}</span>
+                            <span class="tag">${difficulty}</span>
+                            <p>${idea}</p>
+                        </div>
+                        <button onclick="generateWorksheetPDF('${idea.replace(/'/g, "\\'")}', '${currentWsCategory}', '${difficulty}')" style="white-space: nowrap; margin-top: 0;">📄 Generate PDF</button>
                     </div>
                 `).join('');
             } catch (e) {
                 container.innerHTML = '<div class="idea"><p>Error loading ideas. Please try again.</p></div>';
+            }
+        }
+        
+        async function generateWorksheetPDF(idea, category, difficulty) {
+            try {
+                const response = await fetch('/api/generate-worksheet-pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ idea, category, difficulty })
+                });
+                
+                if (!response.ok) throw new Error('Failed to generate PDF');
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `worksheet_${category}_${difficulty}.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+            } catch (e) {
+                alert('Error generating PDF: ' + e.message);
             }
         }
         
