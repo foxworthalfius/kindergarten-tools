@@ -798,6 +798,96 @@ async def get_activity_image(activity: str = "Freeze Dance"):
     except Exception as e:
         raise HTTPException(500, f"Error generating image: {str(e)}")
 
+def generate_worksheet_content_image(idea: str, category: str) -> Image.Image:
+    """Generate an actual worksheet content image based on the idea"""
+    import re
+    
+    width, height = 600, 400
+    img = Image.new('RGB', (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    
+    try:
+        font_large = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 72)
+        font_med = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
+        font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+    except:
+        font_large = ImageFont.load_default()
+        font_med = font_large
+        font_small = font_large
+    
+    # Border
+    draw.rectangle([10, 10, width-10, height-10], outline="black", width=2)
+    
+    if category == "letters":
+        # Extract letter from idea (usually first letter mentioned)
+        match = re.search(r'[A-Z]', idea)
+        if match:
+            letter = match.group()
+            # Draw big letter
+            draw.text((150, 50), letter, fill="black", font=font_large)
+            # Draw tracing practice lines
+            y_pos = 200
+            for i in range(3):
+                draw.line([(50, y_pos), (550, y_pos)], fill=(200, 200, 200), width=1)
+                draw.text((30, y_pos - 20), f"Trace:", fill="black", font=font_small)
+                y_pos += 50
+                
+    elif category == "numbers":
+        # Extract number from idea
+        match = re.search(r'\d+', idea)
+        if match:
+            number = match.group()
+            # Draw big number
+            draw.text((200, 50), number, fill="black", font=font_large)
+            # Draw tracing lines
+            y_pos = 220
+            for i in range(3):
+                draw.line([(50, y_pos), (550, y_pos)], fill=(200, 200, 200), width=1)
+                y_pos += 40
+                
+    elif category == "shapes":
+        # Draw different shapes
+        draw.ellipse([50, 50, 150, 150], outline="black", width=3)
+        draw.rectangle([180, 50, 280, 150], outline="black", width=3)
+        draw.polygon([(320, 150), (370, 50), (420, 150)], outline="black", width=3)
+        draw.text((50, 160), "Circle", fill="black", font=font_small)
+        draw.text((170, 160), "Square", fill="black", font=font_small)
+        draw.text((300, 160), "Triangle", fill="black", font=font_small)
+            
+    elif category == "mazes":
+        # Draw a simple maze
+        draw.rectangle([50, 50, 550, 350], outline="black", width=2)
+        # Start point
+        draw.ellipse([55, 55, 75, 75], fill="green")
+        draw.text((80, 60), "START", fill="green", font=font_small)
+        # End point
+        draw.ellipse([525, 325, 545, 345], fill="red")
+        draw.text((480, 330), "END", fill="red", font=font_small)
+        # Maze paths
+        draw.line([(100, 100), (400, 100)], fill="black", width=3)
+        draw.line([(400, 100), (400, 250)], fill="black", width=3)
+        draw.line([(100, 150), (300, 150)], fill="black", width=3)
+        draw.line([(300, 150), (300, 300)], fill="black", width=3)
+        draw.text((200, 200), "Find the path!", fill="black", font=font_med)
+        
+    elif category == "colors":
+        # Draw color boxes
+        colors_to_draw = [
+            ("Red", (255, 100, 100), 80),
+            ("Blue", (100, 100, 255), 220),
+            ("Yellow", (255, 255, 100), 360)
+        ]
+        for color_name, color_rgb, x_pos in colors_to_draw:
+            draw.rectangle([x_pos, 100, x_pos + 80, 200], outline="black", width=2)
+            draw.text((x_pos + 10, 210), color_name, fill="black", font=font_small)
+            
+    elif category == "coloring":
+        # Draw shapes to color in
+        draw.ellipse([100, 80, 300, 280], outline="black", width=3)
+        draw.text((150, 300), "Color me!", fill="black", font=font_med)
+    
+    return img
+
 @app.post("/api/generate-worksheet-pdf")
 async def generate_worksheet_pdf(
     idea: str = Form(...),
@@ -807,6 +897,10 @@ async def generate_worksheet_pdf(
     """Generate a PDF worksheet from a worksheet idea"""
     try:
         from reportlab.pdfgen import canvas as pdf_canvas
+        from reportlab.lib.utils import ImageReader
+        
+        # Generate worksheet content image
+        worksheet_img = generate_worksheet_content_image(idea, category)
         
         # Create PDF buffer
         pdf_buf = BytesIO()
@@ -822,48 +916,34 @@ async def generate_worksheet_pdf(
         c.drawString(40, height - 70, f"Difficulty: {difficulty.capitalize()}")
         c.drawString(40, height - 90, f"Date: {datetime.now().strftime('%B %d, %Y')}")
         
-        # Idea content
-        c.setFont("Helvetica", 14)
-        c.drawString(40, height - 130, "Activity:")
-        
-        # Word wrap the idea
-        c.setFont("Helvetica", 12)
-        words = idea.split()
-        y_position = height - 160
-        line = []
-        for word in words:
-            test_line = ' '.join(line + [word])
-            if c.stringWidth(test_line, "Helvetica", 12) > 500:
-                c.drawString(60, y_position, ' '.join(line))
-                y_position -= 20
-                line = [word]
-            else:
-                line.append(word)
-        if line:
-            c.drawString(60, y_position, ' '.join(line))
+        # Add worksheet content image
+        img_buf = BytesIO()
+        worksheet_img.save(img_buf, format='PNG')
+        img_buf.seek(0)
+        img_reader = ImageReader(img_buf)
+        c.drawImage(img_reader, 40, height - 350, width=500, height=250)
         
         # Instructions box
-        y_position -= 60
         c.setFont("Helvetica-Bold", 12)
-        c.drawString(40, y_position, "Instructions for Classroom Use:")
+        c.drawString(40, 140, "Instructions for Classroom Use:")
         
         c.setFont("Helvetica", 10)
         instructions = [
             "1. Print this worksheet for each student",
             "2. Provide pencils, crayons, or markers as needed",
-            "3. Read the instructions aloud to the class",
-            "4. Allow students time to complete the activity",
+            "3. Complete the activity as shown",
+            "4. Allow students time to complete",
             "5. Review and celebrate their work!"
         ]
         
-        y_position -= 20
+        y_pos = 120
         for instruction in instructions:
-            c.drawString(60, y_position, instruction)
-            y_position -= 15
+            c.drawString(60, y_pos, instruction)
+            y_pos -= 15
         
         # Footer
         c.setFont("Helvetica", 9)
-        c.drawString(40, 30, "Created with ❤️ Kindergarten Teacher Tools | www.kindergarten-tools.local")
+        c.drawString(40, 30, "Created with ❤️ Kindergarten Teacher Tools")
         
         c.save()
         pdf_buf.seek(0)
