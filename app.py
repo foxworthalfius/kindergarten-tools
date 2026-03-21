@@ -19,6 +19,8 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+import requests
+from urllib.request import urlopen
 
 app = FastAPI(title="Kindergarten Teacher Tools", version="1.0.0")
 
@@ -799,6 +801,61 @@ async def get_activity_image(activity: str = "Freeze Dance"):
         raise HTTPException(500, f"Error generating image: {str(e)}")
 
 def generate_worksheet_content_image(idea: str, category: str) -> Image.Image:
+    """Generate high-quality worksheet content using Venice API"""
+    
+    venice_api_key = "VENICE-INFERENCE-KEY-o6clgxE6LVzLiM1WHbfecQcR22j2IfrM0tU82V7EL-"
+    
+    # Create appropriate prompts for Venice based on category
+    prompts = {
+        "letters": f"A simple, clean outline drawing of the letter from this idea: {idea}. Make it bold and large, perfect for kindergarten tracing. Black and white only, no colors.",
+        "numbers": f"A simple, clean outline drawing showing numbers to trace. Based on: {idea}. Make it perfect for kindergarten practice. Black and white only.",
+        "shapes": f"Simple, clean outline drawings of basic shapes (circle, square, triangle) for kindergarten children to trace. {idea}. Black and white only, no colors.",
+        "mazes": f"A simple, easy maze for kindergarten children. Not too complex. {idea}. Black and white only.",
+        "colors": f"Simple outlined shapes for kindergarten children to color in different colors. {idea}. Show colorful example.",
+        "coloring": f"A simple, cute coloring page for kindergarten. {idea}. Fun outline shapes ready to color."
+    }
+    
+    prompt = prompts.get(category, f"Simple kindergarten worksheet illustration for: {idea}")
+    
+    try:
+        # Call Venice API
+        response = requests.post(
+            "https://api.venice.ai/api/v1/image/generate",
+            headers={
+                "Authorization": f"Bearer {venice_api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "fluently-xl",
+                "prompt": prompt,
+                "width": 600,
+                "height": 400,
+                "steps": 30
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if "images" in data and len(data["images"]) > 0:
+                # Get image URL
+                image_url = data["images"][0]
+                # Download and convert to PIL Image
+                img_response = requests.get(image_url, timeout=30)
+                if img_response.status_code == 200:
+                    from PIL import Image as PILImage
+                    from io import BytesIO
+                    img = PILImage.open(BytesIO(img_response.content))
+                    # Resize to 600x400
+                    img = img.resize((600, 400))
+                    return img
+    except Exception as e:
+        print(f"Venice API Error: {e}")
+    
+    # Fallback to PIL if Venice fails
+    return generate_fallback_worksheet_image(idea, category)
+
+def generate_fallback_worksheet_image(idea: str, category: str) -> Image.Image:
     """Generate an actual worksheet content image based on the idea"""
     import re
     
