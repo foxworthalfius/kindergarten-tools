@@ -1,0 +1,13 @@
+{
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "pip install -r requirements.txt || pip install fastapi uvicorn pillow"
+  },
+  "deploy": {
+    "numReplicas": 1,
+    "restartPolicy": {
+      "type": "ON_FAILURE",
+      "retries": 3
+    }
+  }
+}
