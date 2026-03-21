@@ -801,7 +801,7 @@ async def get_activity_image(activity: str = "Freeze Dance"):
         raise HTTPException(500, f"Error generating image: {str(e)}")
 
 def generate_worksheet_content_image(idea: str, category: str) -> Image.Image:
-    """Generate high-quality worksheet content using Venice API"""
+    """Generate high-quality worksheet content using Venice API with PIL fallback"""
     
     venice_api_key = "VENICE-INFERENCE-KEY-o6clgxE6LVzLiM1WHbfecQcR22j2IfrM0tU82V7EL-"
     
@@ -830,9 +830,9 @@ def generate_worksheet_content_image(idea: str, category: str) -> Image.Image:
                 "prompt": prompt,
                 "width": 600,
                 "height": 400,
-                "steps": 30
+                "steps": 20
             },
-            timeout=60
+            timeout=30
         )
         
         if response.status_code == 200:
@@ -841,7 +841,7 @@ def generate_worksheet_content_image(idea: str, category: str) -> Image.Image:
                 # Get image URL
                 image_url = data["images"][0]
                 # Download and convert to PIL Image
-                img_response = requests.get(image_url, timeout=30)
+                img_response = requests.get(image_url, timeout=20)
                 if img_response.status_code == 200:
                     from PIL import Image as PILImage
                     from io import BytesIO
@@ -849,10 +849,12 @@ def generate_worksheet_content_image(idea: str, category: str) -> Image.Image:
                     # Resize to 600x400
                     img = img.resize((600, 400))
                     return img
+        else:
+            print(f"Venice API returned status {response.status_code}: {response.text}")
     except Exception as e:
-        print(f"Venice API Error: {e}")
+        print(f"Venice API Error (will use fallback): {e}")
     
-    # Fallback to PIL if Venice fails
+    # Fallback to high-quality PIL generation
     return generate_fallback_worksheet_image(idea, category)
 
 def generate_fallback_worksheet_image(idea: str, category: str) -> Image.Image:
