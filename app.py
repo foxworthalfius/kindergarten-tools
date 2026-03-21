@@ -826,7 +826,7 @@ def generate_worksheet_content_image(idea: str, category: str) -> Image.Image:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "fluently-xl",
+                "model": "lustify-sdxl",
                 "prompt": prompt,
                 "width": 600,
                 "height": 400,
