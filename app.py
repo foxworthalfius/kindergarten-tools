@@ -1186,16 +1186,29 @@ def get_home_page() -> str:
                 const res = await fetch(`/api/worksheets?category=${currentWsCategory}&difficulty=${difficulty}&count=${count}`);
                 const data = await res.json();
                 
-                container.innerHTML = data.ideas.map((idea, idx) => `
+                container.innerHTML = data.ideas.map((idea, idx) => {
+                    const safeIdea = idea.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                    return `
                     <div class="idea" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 15px;">
                         <div style="flex: 1;">
                             <span class="tag">${currentWsCategory}</span>
                             <span class="tag">${difficulty}</span>
                             <p>${idea}</p>
                         </div>
-                        <button onclick="generateWorksheetPDF('${idea.replace(/'/g, "\\'")}', '${currentWsCategory}', '${difficulty}')" style="white-space: nowrap; margin-top: 0;">📄 Generate PDF</button>
+                        <button class="pdf-btn" data-idea="${safeIdea}" data-category="${currentWsCategory}" data-difficulty="${difficulty}" style="white-space: nowrap; margin-top: 0;">📄 Generate PDF</button>
                     </div>
-                `).join('');
+                `}).join('');
+                
+                // Add event listeners to all PDF buttons
+                document.querySelectorAll('.pdf-btn').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        generateWorksheetPDF(
+                            this.getAttribute('data-idea'),
+                            this.getAttribute('data-category'),
+                            this.getAttribute('data-difficulty')
+                        );
+                    });
+                });
             } catch (e) {
                 container.innerHTML = '<div class="idea"><p>Error loading ideas. Please try again.</p></div>';
             }
@@ -1203,19 +1216,30 @@ def get_home_page() -> str:
         
         async function generateWorksheetPDF(idea, category, difficulty) {
             try {
+                console.log('Generating PDF for:', idea, category, difficulty);
+                
                 const formData = new FormData();
                 formData.append('idea', idea);
                 formData.append('category', category);
                 formData.append('difficulty', difficulty);
                 
+                console.log('Sending FormData...');
                 const response = await fetch('/api/generate-worksheet-pdf', {
                     method: 'POST',
                     body: formData
                 });
                 
-                if (!response.ok) throw new Error('Failed to generate PDF');
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    const text = await response.text();
+                    console.error('Error response:', text);
+                    throw new Error(`HTTP ${response.status}: ${text}`);
+                }
                 
                 const blob = await response.blob();
+                console.log('Blob received, size:', blob.size);
+                
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
@@ -1224,7 +1248,10 @@ def get_home_page() -> str:
                 link.click();
                 document.body.removeChild(link);
                 window.URL.revokeObjectURL(url);
+                
+                console.log('PDF downloaded successfully');
             } catch (e) {
+                console.error('Error:', e);
                 alert('Error generating PDF: ' + e.message);
             }
         }
