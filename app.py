@@ -1,6 +1,6 @@
 """
 Kindergarten Teacher Tools - Worksheet & Activity Generator
-FastAPI web app for Priya (kindergarten assistant teacher)
+FastAPI web app for a kindergarten assistant teacher
 """
 
 from fastapi import FastAPI, HTTPException
@@ -1070,7 +1070,7 @@ def get_home_page() -> str:
     <div class="container">
         <header>
             <h1>🎨 Kindergarten Teacher Tools</h1>
-            <p>Worksheets & Indoor Activity Ideas for Priya</p>
+            <p>Worksheets & Indoor Activity Ideas for a Kindergarten class</p>
         </header>
         
         <div class="card">
@@ -1149,7 +1149,7 @@ def get_home_page() -> str:
         </div>
         
         <footer>
-            <p>Built for Priya's Classroom ❤️ | Kindergarten Teacher Tools v1.0</p>
+            <p>Built for Kindergarten Classroom ❤️ | Kindergarten Teacher Tools v1.0</p>
         </footer>
     </div>
     
