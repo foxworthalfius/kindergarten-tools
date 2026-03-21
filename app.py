@@ -801,63 +801,422 @@ async def get_activity_image(activity: str = "Freeze Dance"):
         raise HTTPException(500, f"Error generating image: {str(e)}")
 
 def generate_worksheet_content_image(idea: str, category: str) -> Image.Image:
-    """Generate high-quality worksheet content using Venice API with PIL fallback"""
+    """Generate high-quality worksheet content using PIL (production quality)"""
+    from PIL import Image, ImageDraw, ImageFont
+    import re
     
-    venice_api_key = "VENICE-INFERENCE-KEY-o6clgxE6LVzLiM1WHbfecQcR22j2IfrM0tU82V7EL-"
+    # Higher resolution for better quality
+    width, height = 800, 600
+    img = Image.new('RGB', (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
     
-    # Create appropriate prompts for Venice based on category
-    prompts = {
-        "letters": f"A simple, clean outline drawing of the letter from this idea: {idea}. Make it bold and large, perfect for kindergarten tracing. Black and white only, no colors.",
-        "numbers": f"A simple, clean outline drawing showing numbers to trace. Based on: {idea}. Make it perfect for kindergarten practice. Black and white only.",
-        "shapes": f"Simple, clean outline drawings of basic shapes (circle, square, triangle) for kindergarten children to trace. {idea}. Black and white only, no colors.",
-        "mazes": f"A simple, easy maze for kindergarten children. Not too complex. {idea}. Black and white only.",
-        "colors": f"Simple outlined shapes for kindergarten children to color in different colors. {idea}. Show colorful example.",
-        "coloring": f"A simple, cute coloring page for kindergarten. {idea}. Fun outline shapes ready to color."
-    }
-    
-    prompt = prompts.get(category, f"Simple kindergarten worksheet illustration for: {idea}")
-    
+    # Try to load nice fonts
     try:
-        # Call Venice API
-        response = requests.post(
-            "https://api.venice.ai/api/v1/image/generate",
-            headers={
-                "Authorization": f"Bearer {venice_api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "lustify-sdxl",
-                "prompt": prompt,
-                "width": 600,
-                "height": 400,
-                "steps": 20
-            },
-            timeout=30
-        )
+        # Try multiple font paths for better compatibility
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"
+        ]
+        font_large = None
+        font_med = None
+        font_small = None
         
-        if response.status_code == 200:
-            data = response.json()
-            if "images" in data and len(data["images"]) > 0:
-                # Get image URL
-                image_url = data["images"][0]
-                # Download and convert to PIL Image
-                img_response = requests.get(image_url, timeout=20)
-                if img_response.status_code == 200:
-                    from PIL import Image as PILImage
-                    from io import BytesIO
-                    img = PILImage.open(BytesIO(img_response.content))
-                    # Resize to 600x400
-                    img = img.resize((600, 400))
-                    return img
-        else:
-            print(f"Venice API returned status {response.status_code}: {response.text}")
-    except Exception as e:
-        print(f"Venice API Error (will use fallback): {e}")
+        for font_path in font_paths:
+            try:
+                font_large = ImageFont.truetype(font_path, 96)
+                font_med = ImageFont.truetype(font_path, 48)
+                font_small = ImageFont.truetype(font_path, 28)
+                break
+            except:
+                continue
+        
+        if not font_large:
+            font_large = ImageFont.load_default()
+            font_med = font_large
+            font_small = font_large
+    except:
+        font_large = ImageFont.load_default()
+        font_med = font_large
+        font_small = font_large
     
-    # Fallback to high-quality PIL generation
-    return generate_fallback_worksheet_image(idea, category)
+    # Thicker border for better appearance
+    draw.rectangle([20, 20, width-20, height-20], outline="black", width=3)
+    
+    if category == "letters":
+        # Extract letter from idea
+        match = re.search(r'[A-Z]', idea)
+        if match:
+            letter = match.group().upper()
+            # Center the letter
+            bbox = draw.textbbox((0, 0), letter, font=font_large)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            x = (width - text_width) // 2
+            y = 150
+            
+            # Draw letter with outline effect
+            draw.text((x, y), letter, fill="black", font=font_large)
+            
+            # Add tracing guide lines with arrows
+            y_pos = 320
+            for i in range(4):
+                # Main tracing line
+                draw.line([(100, y_pos), (700, y_pos)], fill=(100, 100, 100), width=2)
+                # Add dash effect for tracing feel
+                for x_dash in range(120, 680, 20):
+                    draw.line([(x_dash, y_pos), (x_dash+8, y_pos)], fill="black", width=2)
+                
+                # Label
+                draw.text((60, y_pos - 10), f"Trace line {i+1}:", fill="black", font=font_med)
+                y_pos += 60
+                
+    elif category == "numbers":
+        # Extract number from idea
+        match = re.search(r'\d+', idea)
+        if match:
+            number = match.group()
+            # Center the number
+            bbox = draw.textbbox((0, 0), number, font=font_large)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            x = (width - text_width) // 2
+            y = 150
+            
+            draw.text((x, y), number, fill="black", font=font_large)
+            
+            # Number tracing lines
+            y_pos = 320
+            for i in range(3):
+                draw.line([(100, y_pos), (700, y_pos)], fill=(100, 100, 100), width=2)
+                # Dashed effect
+                for x_dash in range(120, 680, 25):
+                    draw.line([(x_dash, y_pos), (x_dash+10, y_pos)], fill="black", width=2)
+                
+                draw.text((60, y_pos - 8), f"Practice {i+1}:", fill="black", font=font_med)
+                y_pos += 50
+                
+    elif category == "shapes":
+        # Draw shapes with labels
+        shapes = [
+            ("Circle", lambda d: d.ellipse([150, 100, 250, 200], outline="black", width=3)),
+            ("Square", lambda d: d.rectangle([300, 100, 400, 200], outline="black", width=3)),
+            ("Triangle", lambda d: d.polygon([(450, 200), (500, 100), (550, 200)], outline="black", width=3)),
+            ("Rectangle", lambda d: d.rectangle([150, 250, 350, 350], outline="black", width=3)),
+            ("Diamond", lambda d: d.polygon([(300, 150), (350, 100), (400, 150), (350, 200)], outline="black", width=3)),
+        ]
+        
+        for i, (name, draw_func) in enumerate(shapes):
+            col = i % 3
+            row = i // 3
+            x_offset = 100 + col * 200
+            y_offset = 100 + row * 180
+            
+            # Temporarily translate drawing context
+            # Instead, we'll draw each shape at its position
+            if name == "Circle":
+                draw.ellipse([x_offset, y_offset, x_offset+100, y_offset+100], outline="black", width=3)
+            elif name == "Square":
+                draw.rectangle([x_offset, y_offset, x_offset+100, y_offset+100], outline="black", width=3)
+            elif name == "Triangle":
+                draw.polygon([(x_offset+50, y_offset), (x_offset, y_offset+100), (x_offset+100, y_offset+100)], outline="black", width=3)
+            elif name == "Rectangle":
+                draw.rectangle([x_offset, y_offset, x_offset+100, y_offset+100], outline="black", width=3)
+            elif name == "Diamond":
+                draw.polygon([(x_offset+50, y_offset), (x_offset, y_offset+50), (x_offset+50, y_offset+100), (x_offset+100, y_offset+50)], outline="black", width=3)
+            
+            # Label below shape
+            text_bbox = draw.textbbox((0, 0), name, font=font_med)
+            text_width = text_bbox[2] - text_bbox[0]
+            draw.text((x_offset + (100 - text_width)//2, y_offset + 110), name, fill="black", font=font_med)
+                
+    elif category == "mazes":
+        # Draw a nice maze
+        maze_margin = 100
+        maze_width = width - 2 * maze_margin
+        maze_height = height - 2 * maze_margin
+        
+        # Outer boundary
+        draw.rectangle([maze_margin, maze_margin, width-maze_margin, height-maze_margin], outline="black", width=3)
+        
+        # Start and end
+        draw.ellipse([maze_margin+10, maze_margin+10, maze_margin+40, maze_margin+40], fill="green", outline="black", width=2)
+        draw.text((maze_margin+45, maze_margin+15), "Start", fill="black", font=font_med)
+        
+        draw.ellipse([width-maze_margin-40, height-maze_margin-40, width-maze_margin-10, height-maze_margin-10], fill="red", outline="black", width=2)
+        draw.text((width-maze_margin-35, height-maze_margin-15), "End", fill="black", font=font_med)
+        
+        # Draw maze paths (simple maze)
+        # Horizontal paths
+        draw.line([(maze_margin+50, maze_margin+100), (width-maze_margin-50, maze_margin+100)], fill="black", width=3)
+        draw.line([(maze_margin+50, maze_margin+200), (maze_margin+200, maze_margin+200)], fill="black", width=3)
+        draw.line([(maze_margin+200, maze_margin+200), (maze_margin+200, height-maze_margin-100)], fill="black", width=3)
+        draw.line([(maze_margin+100, maze_margin+300), (width-maze_margin-100, maze_margin+300)], fill="black", width=3)
+        draw.line([(width-maze_margin-100, maze_margin+300), (width-maze_margin-100, height-maze_margin-50)], fill="black", width=3)
+        
+        # Vertical paths
+        draw.line([(maze_margin+100, maze_margin+100), (maze_margin+100, maze_margin+200)], fill="black", width=3)
+        draw.line([(maze_margin+300, maze_margin+100), (maze_margin+300, maze_margin+300)], fill="black", width=3)
+        draw.line([(width-maze_margin-100, maze_margin+200), (width-maze_margin-100, height-maze_margin-100)], fill="black", width=3)
+        
+        # Label
+        draw.text((width//2, height-50), "Find the path from Start to End!", fill="black", font=font_med)
+        
+    elif category == "colors":
+        # Draw color swatches with names
+        colors = [
+            ("Red", (255, 100, 100)),
+            ("Blue", (100, 100, 255)),
+            ("Yellow", (255, 255, 100)),
+            ("Green", (100, 200, 100)),
+            ("Orange", (255, 165, 0)),
+            ("Purple", (200, 100, 255))
+        ]
+        
+        for i, (name, rgb) in enumerate(colors):
+            col = i % 3
+            row = i // 3
+            x = 100 + col * 200
+            y = 100 + row * 150
+            
+            # Color swatch
+            draw.rectangle([x, y, x+120, y+100], fill=rgb, outline="black", width=2)
+            
+            # Color name
+            text_bbox = draw.textbbox((0, 0), name, font=font_med)
+            text_width = text_bbox[2] - text_bbox[0]
+            draw.text((x + (120 - text_width)//2, y+110), name, fill="black", font=font_med)
+            
+    elif category == "coloring":
+        # Draw a fun character to color
+        # Simple smiling sun
+        draw.ellipse([300, 100, 500, 300], outline="black", width=3)  # Sun face
+        draw.ellipse([350, 150, 380, 180], outline="black", width=2)  # Left eye
+        draw.ellipse([420, 150, 450, 180], outline="black", width=2)  # Right eye
+        draw.arc([325, 200, 475, 300], 0, 180, fill="black", width=3)  # Smile
+        
+        # Sun rays
+        for i in range(12):
+            angle = i * 30
+            import math
+            x1 = 400 + int(120 * math.cos(math.radians(angle)))
+            y1 = 200 + int(120 * math.sin(math.radians(angle)))
+            x2 = 400 + int(180 * math.cos(math.radians(angle)))
+            y2 = 200 + int(180 * math.sin(math.radians(angle)))
+            draw.line([(x1, y1), (x2, y2)], fill="black", width=3)
+        
+        draw.text((width//2, 350), "Color the Happy Sun!", fill="black", font=font_med)
+    
+    return img
 
 def generate_fallback_worksheet_image(idea: str, category: str) -> Image.Image:
+    """Generate high-quality worksheet content using PIL (production quality)"""
+    from PIL import Image, ImageDraw, ImageFont
+    import re
+    
+    # Higher resolution for better quality
+    width, height = 800, 600
+    img = Image.new('RGB', (width, height), (255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    
+    # Try to load nice fonts
+    try:
+        # Try multiple font paths for better compatibility
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"
+        ]
+        font_large = None
+        font_med = None
+        font_small = None
+        
+        for font_path in font_paths:
+            try:
+                font_large = ImageFont.truetype(font_path, 96)
+                font_med = ImageFont.truetype(font_path, 48)
+                font_small = ImageFont.truetype(font_path, 28)
+                break
+            except:
+                continue
+        
+        if not font_large:
+            font_large = ImageFont.load_default()
+            font_med = font_large
+            font_small = font_large
+    except:
+        font_large = ImageFont.load_default()
+        font_med = font_large
+        font_small = font_large
+    
+    # Thicker border for better appearance
+    draw.rectangle([20, 20, width-20, height-20], outline="black", width=3)
+    
+    if category == "letters":
+        # Extract letter from idea
+        match = re.search(r'[A-Z]', idea)
+        if match:
+            letter = match.group().upper()
+            # Center the letter
+            bbox = draw.textbbox((0, 0), letter, font=font_large)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            x = (width - text_width) // 2
+            y = 150
+            
+            # Draw letter with outline effect
+            draw.text((x, y), letter, fill="black", font=font_large)
+            
+            # Add tracing guide lines with arrows
+            y_pos = 320
+            for i in range(4):
+                # Main tracing line
+                draw.line([(100, y_pos), (700, y_pos)], fill=(100, 100, 100), width=2)
+                # Add dash effect for tracing feel
+                for x_dash in range(120, 680, 20):
+                    draw.line([(x_dash, y_pos), (x_dash+8, y_pos)], fill="black", width=2)
+                
+                # Label
+                draw.text((60, y_pos - 10), f"Trace line {i+1}:", fill="black", font=font_med)
+                y_pos += 60
+                
+    elif category == "numbers":
+        # Extract number from idea
+        match = re.search(r'\d+', idea)
+        if match:
+            number = match.group()
+            # Center the number
+            bbox = draw.textbbox((0, 0), number, font=font_large)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            x = (width - text_width) // 2
+            y = 150
+            
+            draw.text((x, y), number, fill="black", font=font_large)
+            
+            # Number tracing lines
+            y_pos = 320
+            for i in range(3):
+                draw.line([(100, y_pos), (700, y_pos)], fill=(100, 100, 100), width=2)
+                # Dashed effect
+                for x_dash in range(120, 680, 25):
+                    draw.line([(x_dash, y_pos), (x_dash+10, y_pos)], fill="black", width=2)
+                
+                draw.text((60, y_pos - 8), f"Practice {i+1}:", fill="black", font=font_med)
+                y_pos += 50
+                
+    elif category == "shapes":
+        # Draw shapes with labels
+        shapes = [
+            ("Circle", lambda d: d.ellipse([150, 100, 250, 200], outline="black", width=3)),
+            ("Square", lambda d: d.rectangle([300, 100, 400, 200], outline="black", width=3)),
+            ("Triangle", lambda d: d.polygon([(450, 200), (500, 100), (550, 200)], outline="black", width=3)),
+            ("Rectangle", lambda d: d.rectangle([150, 250, 350, 350], outline="black", width=3)),
+            ("Diamond", lambda d: d.polygon([(300, 150), (350, 100), (400, 150), (350, 200)], outline="black", width=3)),
+        ]
+        
+        for i, (name, draw_func) in enumerate(shapes):
+            col = i % 3
+            row = i // 3
+            x_offset = 100 + col * 200
+            y_offset = 100 + row * 180
+            
+            # Temporarily translate drawing context
+            # Instead, we'll draw each shape at its position
+            if name == "Circle":
+                draw.ellipse([x_offset, y_offset, x_offset+100, y_offset+100], outline="black", width=3)
+            elif name == "Square":
+                draw.rectangle([x_offset, y_offset, x_offset+100, y_offset+100], outline="black", width=3)
+            elif name == "Triangle":
+                draw.polygon([(x_offset+50, y_offset), (x_offset, y_offset+100), (x_offset+100, y_offset+100)], outline="black", width=3)
+            elif name == "Rectangle":
+                draw.rectangle([x_offset, y_offset, x_offset+100, y_offset+100], outline="black", width=3)
+            elif name == "Diamond":
+                draw.polygon([(x_offset+50, y_offset), (x_offset, y_offset+50), (x_offset+50, y_offset+100), (x_offset+100, y_offset+50)], outline="black", width=3)
+            
+            # Label below shape
+            text_bbox = draw.textbbox((0, 0), name, font=font_med)
+            text_width = text_bbox[2] - text_bbox[0]
+            draw.text((x_offset + (100 - text_width)//2, y_offset + 110), name, fill="black", font=font_med)
+                
+    elif category == "mazes":
+        # Draw a nice maze
+        maze_margin = 100
+        maze_width = width - 2 * maze_margin
+        maze_height = height - 2 * maze_margin
+        
+        # Outer boundary
+        draw.rectangle([maze_margin, maze_margin, width-maze_margin, height-maze_margin], outline="black", width=3)
+        
+        # Start and end
+        draw.ellipse([maze_margin+10, maze_margin+10, maze_margin+40, maze_margin+40], fill="green", outline="black", width=2)
+        draw.text((maze_margin+45, maze_margin+15), "Start", fill="black", font=font_med)
+        
+        draw.ellipse([width-maze_margin-40, height-maze_margin-40, width-maze_margin-10, height-maze_margin-10], fill="red", outline="black", width=2)
+        draw.text((width-maze_margin-35, height-maze_margin-15), "End", fill="black", font=font_med)
+        
+        # Draw maze paths (simple maze)
+        # Horizontal paths
+        draw.line([(maze_margin+50, maze_margin+100), (width-maze_margin-50, maze_margin+100)], fill="black", width=3)
+        draw.line([(maze_margin+50, maze_margin+200), (maze_margin+200, maze_margin+200)], fill="black", width=3)
+        draw.line([(maze_margin+200, maze_margin+200), (maze_margin+200, height-maze_margin-100)], fill="black", width=3)
+        draw.line([(maze_margin+100, maze_margin+300), (width-maze_margin-100, maze_margin+300)], fill="black", width=3)
+        draw.line([(width-maze_margin-100, maze_margin+300), (width-maze_margin-100, height-maze_margin-50)], fill="black", width=3)
+        
+        # Vertical paths
+        draw.line([(maze_margin+100, maze_margin+100), (maze_margin+100, maze_margin+200)], fill="black", width=3)
+        draw.line([(maze_margin+300, maze_margin+100), (maze_margin+300, maze_margin+300)], fill="black", width=3)
+        draw.line([(width-maze_margin-100, maze_margin+200), (width-maze_margin-100, height-maze_margin-100)], fill="black", width=3)
+        
+        # Label
+        draw.text((width//2, height-50), "Find the path from Start to End!", fill="black", font=font_med)
+        
+    elif category == "colors":
+        # Draw color swatches with names
+        colors = [
+            ("Red", (255, 100, 100)),
+            ("Blue", (100, 100, 255)),
+            ("Yellow", (255, 255, 100)),
+            ("Green", (100, 200, 100)),
+            ("Orange", (255, 165, 0)),
+            ("Purple", (200, 100, 255))
+        ]
+        
+        for i, (name, rgb) in enumerate(colors):
+            col = i % 3
+            row = i // 3
+            x = 100 + col * 200
+            y = 100 + row * 150
+            
+            # Color swatch
+            draw.rectangle([x, y, x+120, y+100], fill=rgb, outline="black", width=2)
+            
+            # Color name
+            text_bbox = draw.textbbox((0, 0), name, font=font_med)
+            text_width = text_bbox[2] - text_bbox[0]
+            draw.text((x + (120 - text_width)//2, y+110), name, fill="black", font=font_med)
+            
+    elif category == "coloring":
+        # Draw a fun character to color
+        # Simple smiling sun
+        draw.ellipse([300, 100, 500, 300], outline="black", width=3)  # Sun face
+        draw.ellipse([350, 150, 380, 180], outline="black", width=2)  # Left eye
+        draw.ellipse([420, 150, 450, 180], outline="black", width=2)  # Right eye
+        draw.arc([325, 200, 475, 300], 0, 180, fill="black", width=3)  # Smile
+        
+        # Sun rays
+        for i in range(12):
+            angle = i * 30
+            import math
+            x1 = 400 + int(120 * math.cos(math.radians(angle)))
+            y1 = 200 + int(120 * math.sin(math.radians(angle)))
+            x2 = 400 + int(180 * math.cos(math.radians(angle)))
+            y2 = 200 + int(180 * math.sin(math.radians(angle)))
+            draw.line([(x1, y1), (x2, y2)], fill="black", width=3)
+        
+        draw.text((width//2, 350), "Color the Happy Sun!", fill="black", font=font_med)
+    
+    return img
     """Generate an actual worksheet content image based on the idea"""
     import re
     
