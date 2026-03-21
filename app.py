@@ -3,7 +3,7 @@ Kindergarten Teacher Tools - Worksheet & Activity Generator
 FastAPI web app for a kindergarten assistant teacher
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -799,7 +799,11 @@ async def get_activity_image(activity: str = "Freeze Dance"):
         raise HTTPException(500, f"Error generating image: {str(e)}")
 
 @app.post("/api/generate-worksheet-pdf")
-async def generate_worksheet_pdf(idea: str, category: str = "letters", difficulty: str = "easy"):
+async def generate_worksheet_pdf(
+    idea: str = Form(...),
+    category: str = Form("letters"),
+    difficulty: str = Form("easy")
+):
     """Generate a PDF worksheet from a worksheet idea"""
     try:
         from reportlab.pdfgen import canvas as pdf_canvas
