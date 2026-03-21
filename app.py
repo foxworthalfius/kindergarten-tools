@@ -1203,10 +1203,14 @@ def get_home_page() -> str:
         
         async function generateWorksheetPDF(idea, category, difficulty) {
             try {
+                const formData = new FormData();
+                formData.append('idea', idea);
+                formData.append('category', category);
+                formData.append('difficulty', difficulty);
+                
                 const response = await fetch('/api/generate-worksheet-pdf', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ idea, category, difficulty })
+                    body: formData
                 });
                 
                 if (!response.ok) throw new Error('Failed to generate PDF');
