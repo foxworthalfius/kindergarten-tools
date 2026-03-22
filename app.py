@@ -559,13 +559,16 @@ async def generate_ideas_with_openrouter(prompt: str, count: int = 3) -> Optiona
     
     model = random.choice(OPENROUTER_FREE_MODELS)
     
-    system_prompt = """You are a creative kindergarten teacher assistant. Generate fun, age-appropriate worksheet ideas or activity ideas for children ages 3-6. 
+    # Combine instructions into user prompt ( Gemma doesn't support system prompts)
+    full_prompt = f"""You are a creative kindergarten teacher assistant. Generate fun, age-appropriate worksheet ideas or activity ideas for children ages 3-6. 
     - Be specific and detailed
     - Include the learning objective
     - Keep ideas simple and executable
-    - Format each idea on its own line
-    - For worksheets: include the category focus (letters, numbers, shapes, colors, mazes, coloring)
-    - For activities: include materials needed and estimated time"""
+    - Format each idea on its own line starting with a dash or number
+    - For worksheets: include the worksheet title and brief description
+    - For activities: include materials needed and estimated time
+
+{prompt}"""
     
     try:
         response = requests.post(
@@ -579,10 +582,9 @@ async def generate_ideas_with_openrouter(prompt: str, count: int = 3) -> Optiona
             json={
                 "model": model,
                 "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": full_prompt}
                 ],
-                "max_tokens": 500,
+                "max_tokens": 600,
                 "temperature": 0.9
             },
             timeout=30
@@ -1876,14 +1878,19 @@ def get_home_page() -> str:
                 const res = await fetch(`/api/worksheets?category=${currentWsCategory}&difficulty=${difficulty}&count=${count}`);
                 const data = await res.json();
                 
-                container.innerHTML = data.ideas.map((idea, idx) => {
-                    const safeIdea = idea.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                container.innerHTML = data.ideas.map((item, idx) => {
+                    const ideaText = typeof item === 'string' ? item : (item.idea || item.title || JSON.stringify(item));
+                    const description = typeof item === 'object' ? (item.description || '') : '';
+                    const objective = typeof item === 'object' ? (item.objective || '') : '';
+                    const safeIdea = ideaText.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
                     return `
                     <div class="idea" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 15px;">
                         <div style="flex: 1;">
                             <span class="tag">${currentWsCategory}</span>
                             <span class="tag">${difficulty}</span>
-                            <p>${idea}</p>
+                            <p>${ideaText}</p>
+                            ${description ? `<p style="color:#666;font-size:0.9em;margin-top:5px;">${description}</p>` : ''}
+                            ${objective ? `<p style="color:#888;font-size:0.85em;font-style:italic;margin-top:3px;">Learning: ${objective}</p>` : ''}
                         </div>
                         <button class="pdf-btn" data-idea="${safeIdea}" data-category="${currentWsCategory}" data-difficulty="${difficulty}" style="white-space: nowrap; margin-top: 0;">📄 Generate PDF</button>
                     </div>
@@ -1988,13 +1995,15 @@ def get_home_page() -> str:
                 const data = await res.json();
                 
                 if (type === 'worksheet') {
-                    container.innerHTML = data.ideas.map(idea => `
+                    container.innerHTML = data.ideas.map(item => {
+                        const ideaText = typeof item === 'string' ? item : (item.idea || item.title || JSON.stringify(item));
+                        return `
                         <div class="idea">
                             <span class="tag">${data.category}</span>
                             <span class="tag">${data.difficulty}</span>
-                            <p>${idea}</p>
+                            <p>${ideaText}</p>
                         </div>
-                    `).join('');
+                    `}).join('');
                 } else {
                     container.innerHTML = data.activities.map(act => `
                         <div class="idea">
