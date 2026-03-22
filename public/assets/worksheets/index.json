@@ -1,0 +1,98 @@
+{
+  "letters": [
+    {
+      "id": 1,
+      "idea": "Letter A tracing worksheet",
+      "image": "assets/worksheets/letters/letters_01.jpg",
+      "size_kb": 24.2578125
+    },
+    {
+      "id": 2,
+      "idea": "Letter B tracing worksheet",
+      "image": "assets/worksheets/letters/letters_02.jpg",
+      "size_kb": 24.1259765625
+    },
+    {
+      "id": 3,
+      "idea": "Letter C tracing worksheet",
+      "image": "assets/worksheets/letters/letters_03.jpg",
+      "size_kb": 24.1083984375
+    },
+    {
+      "id": 4,
+      "idea": "Letter D tracing worksheet",
+      "image": "assets/worksheets/letters/letters_04.jpg",
+      "size_kb": 24.0498046875
+    },
+    {
+      "id": 5,
+      "idea": "Letter E tracing worksheet",
+      "image": "assets/worksheets/letters/letters_05.jpg",
+      "size_kb": 23.529296875
+    }
+  ],
+  "numbers": [
+    {
+      "id": 1,
+      "idea": "Number 1 tracing practice",
+      "image": "assets/worksheets/numbers/numbers_01.jpg",
+      "size_kb": 23.8603515625
+    },
+    {
+      "id": 2,
+      "idea": "Number 2 tracing practice",
+      "image": "assets/worksheets/numbers/numbers_02.jpg",
+      "size_kb": 24.720703125
+    },
+    {
+      "id": 3,
+      "idea": "Number 3 tracing practice",
+      "image": "assets/worksheets/numbers/numbers_03.jpg",
+      "size_kb": 24.8662109375
+    },
+    {
+      "id": 4,
+      "idea": "Number 4 tracing practice",
+      "image": "assets/worksheets/numbers/numbers_04.jpg",
+      "size_kb": 24.3544921875
+    },
+    {
+      "id": 5,
+      "idea": "Number 5 tracing practice",
+      "image": "assets/worksheets/numbers/numbers_05.jpg",
+      "size_kb": 24.7158203125
+    }
+  ],
+  "shapes": [
+    {
+      "id": 1,
+      "idea": "Basic shapes: circle, square, triangle, rectangle, diamond",
+      "image": "assets/worksheets/shapes/shapes_01.jpg",
+      "size_kb": 36.9921875
+    }
+  ],
+  "mazes": [
+    {
+      "id": 1,
+      "idea": "Simple maze: find the path from START to END",
+      "image": "assets/worksheets/mazes/mazes_01.jpg",
+      "size_kb": 40.923828125
+    }
+  ],
+  "colors": [
+    {
+      "id": 1,
+      "idea": "Color recognition: red, blue, yellow, green, orange, purple",
+      "image": "assets/worksheets/colors/colors_01.jpg",
+      "size_kb": 37.3271484375
+    }
+  ],
+  "coloring": [
+    {
+      "id": 1,
+      "idea": "Happy sun coloring page",
+      "image": "assets/worksheets/coloring/coloring_01.jpg",
+      "size_kb": 32.71484375
+    }
+  ]
+}

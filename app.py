@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from PIL import Image, ImageDraw, ImageFont
 from typing import Optional, List
 from io import BytesIO
+from pathlib import Path
 import random
 import json
 from datetime import datetime
@@ -423,19 +424,41 @@ async def generate_worksheets(
     difficulty: str = "easy",
     count: int = 5
 ):
-    """Generate worksheet ideas"""
+    """Generate worksheet ideas - load from pre-generated index if available"""
     if category not in WORKSHEETS:
         raise HTTPException(400, f"Unknown category: {category}")
     if difficulty not in WORKSHEETS[category]:
         raise HTTPException(400, f"Unknown difficulty: {difficulty}")
     
+    # Try to load from pre-generated index first
+    try:
+        index_path = Path(__file__).parent / "public" / "assets" / "worksheets" / "index.json"
+        if index_path.exists():
+            with open(index_path) as f:
+                index = json.load(f)
+            
+            if category in index and index[category]:
+                ideas = random.sample(index[category], min(count, len(index[category])))
+                return {
+                    "category": category,
+                    "difficulty": difficulty,
+                    "ideas": [{"idea": item["idea"], "image": item["image"]} for item in ideas],
+                    "source": "pre-generated",
+                    "timestamp": datetime.now().isoformat()
+                }
+    except Exception as e:
+        print(f"Warning: Could not load pre-generated index: {e}")
+    
+    # Fallback to original logic
     ideas = random.sample(WORKSHEETS[category][difficulty], min(count, len(WORKSHEETS[category][difficulty])))
     return {
         "category": category,
         "difficulty": difficulty,
         "ideas": ideas,
+        "source": "dynamic",
         "timestamp": datetime.now().isoformat()
     }
+
 
 @app.get("/api/activities")
 async def generate_activities(
@@ -1317,8 +1340,28 @@ async def generate_worksheet_pdf(
         from reportlab.pdfgen import canvas as pdf_canvas
         from reportlab.lib.utils import ImageReader
         
-        # Generate worksheet content image
-        worksheet_img = generate_worksheet_content_image(idea, category)
+        # Try to find pre-generated image first
+        worksheet_img = None
+        try:
+            index_path = Path(__file__).parent / "public" / "assets" / "worksheets" / "index.json"
+            if index_path.exists():
+                with open(index_path) as f:
+                    index = json.load(f)
+                
+                if category in index:
+                    for item in index[category]:
+                        if item["idea"] == idea:
+                            image_path = Path(__file__).parent / "public" / item["image"]
+                            if image_path.exists():
+                                worksheet_img = Image.open(image_path)
+                                worksheet_img = worksheet_img.convert("RGB")
+                                break
+        except Exception as e:
+            print(f"Could not load pre-generated image: {e}")
+        
+        # Fall back to generating image if not found
+        if not worksheet_img:
+            worksheet_img = generate_worksheet_content_image(idea, category)
         
         # Create PDF buffer
         pdf_buf = BytesIO()
