@@ -22,8 +22,23 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 import requests
 from urllib.request import urlopen
+from pathlib import Path
 
-app = FastAPI(title="Kindergarten Teacher Tools", version="1.0.0")
+# Load OpenRouter API key from environment or file
+OPENROUTER_API_KEY = None
+openrouter_key_path = Path.home() / "Documents" / "openrouter"
+if openrouter_key_path.exists():
+    OPENROUTER_API_KEY = openrouter_key_path.read_text().strip()
+
+# Available free models for OpenRouter
+OPENROUTER_FREE_MODELS = [
+    "google/gemma-3-4b-it:free",
+    "google/gemma-3-4b-it:free",
+    "mistralai/mistral-small-3.1-24b-instruct:free",
+    "nvidia/nemotron-nano-9b-v2:free",
+]
+
+app = FastAPI(title="Kindergarten Teacher Tools", version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -424,38 +439,50 @@ async def generate_worksheets(
     difficulty: str = "easy",
     count: int = 5
 ):
-    """Generate worksheet ideas - load from pre-generated index if available"""
+    """Generate worksheet ideas using OpenRouter AI (free model)"""
     if category not in WORKSHEETS:
         raise HTTPException(400, f"Unknown category: {category}")
     if difficulty not in WORKSHEETS[category]:
         raise HTTPException(400, f"Unknown difficulty: {difficulty}")
     
-    # Try to load from pre-generated index first
-    try:
-        index_path = Path(__file__).parent / "public" / "assets" / "worksheets" / "index.json"
-        if index_path.exists():
-            with open(index_path) as f:
-                index = json.load(f)
-            
-            if category in index and index[category]:
-                ideas = random.sample(index[category], min(count, len(index[category])))
+    prompt = f"Generate exactly {count} creative kindergarten worksheet ideas for children ages 3-6. Category: {category}. Difficulty: {difficulty}. For each idea include: the worksheet title, a brief description, and the learning objective. Format as JSON array of objects with keys: title, description, objective."
+    
+    ai_ideas = await generate_ideas_with_openrouter(prompt, count)
+    
+    if ai_ideas:
+        # Parse AI ideas - try JSON first, then fallback to text lines
+        try:
+            # Try to parse as JSON array
+            parsed = json.loads(ai_ideas[0]) if isinstance(ai_ideas[0], str) else ai_ideas
+            if isinstance(parsed, list):
                 return {
                     "category": category,
                     "difficulty": difficulty,
-                    "ideas": [{"idea": item["idea"], "image": item["image"]} for item in ideas],
-                    "source": "pre-generated",
+                    "ideas": [{"idea": item.get("title", str(item)), "description": item.get("description", ""), "objective": item.get("objective", "")} for item in parsed],
+                    "source": "openrouter",
+                    "model": "gemma-3-4b-it:free",
                     "timestamp": datetime.now().isoformat()
                 }
-    except Exception as e:
-        print(f"Warning: Could not load pre-generated index: {e}")
+        except:
+            pass
+        
+        # Fallback: treat each line as an idea
+        return {
+            "category": category,
+            "difficulty": difficulty,
+            "ideas": [{"idea": idea, "description": "", "objective": ""} for idea in ai_ideas],
+            "source": "openrouter",
+            "model": "gemma-3-4b-it:free",
+            "timestamp": datetime.now().isoformat()
+        }
     
-    # Fallback to original logic
+    # Ultimate fallback to hardcoded
     ideas = random.sample(WORKSHEETS[category][difficulty], min(count, len(WORKSHEETS[category][difficulty])))
     return {
         "category": category,
         "difficulty": difficulty,
-        "ideas": ideas,
-        "source": "dynamic",
+        "ideas": [{"idea": idea, "description": "", "objective": ""} for idea in ideas],
+        "source": "hardcoded",
         "timestamp": datetime.now().isoformat()
     }
 
@@ -466,19 +493,52 @@ async def generate_activities(
     count: int = 3,
     duration_minutes: int = 15
 ):
-    """Generate indoor activity ideas"""
+    """Generate activity ideas using OpenRouter AI (free model)"""
     if category not in ACTIVITIES:
         raise HTTPException(400, f"Unknown category: {category}")
     
-    # Filter by duration
+    prompt = f"Generate exactly {count} creative kindergarten indoor activities for children ages 3-6. Category: {category}. Duration: up to {duration_minutes} minutes each. For each activity include: name, description, materials needed, and skills developed. Format as JSON array of objects with keys: name, description, materials, skills."
+    
+    ai_ideas = await generate_ideas_with_openrouter(prompt, count)
+    
+    if ai_ideas:
+        try:
+            parsed = json.loads(ai_ideas[0]) if isinstance(ai_ideas[0], str) else ai_ideas
+            if isinstance(parsed, list):
+                return {
+                    "category": category,
+                    "activities": [{
+                        "name": item.get("name", str(item)),
+                        "description": item.get("description", ""),
+                        "materials": item.get("materials", ""),
+                        "skills": item.get("skills", []),
+                        "duration_min": duration_minutes
+                    } for item in parsed],
+                    "source": "openrouter",
+                    "model": "gemma-3-4b-it:free",
+                    "timestamp": datetime.now().isoformat()
+                }
+        except:
+            pass
+        
+        # Fallback: treat each line as an activity
+        return {
+            "category": category,
+            "activities": [{"name": idea, "description": idea, "materials": "", "skills": [], "duration_min": duration_minutes} for idea in ai_ideas],
+            "source": "openrouter",
+            "model": "gemma-3-4b-it:free",
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    # Ultimate fallback to hardcoded
     filtered = [a for a in ACTIVITIES[category] if a["duration_min"] <= duration_minutes]
     if not filtered:
         filtered = ACTIVITIES[category]
-    
     selected = random.sample(filtered, min(count, len(filtered)))
     return {
         "category": category,
         "activities": selected,
+        "source": "hardcoded",
         "timestamp": datetime.now().isoformat()
     }
 
@@ -492,22 +552,111 @@ async def get_categories():
         "difficulties": ["easy", "medium", "hard"]
     }
 
+async def generate_ideas_with_openrouter(prompt: str, count: int = 3) -> Optional[List[str]]:
+    """Generate ideas using OpenRouter AI (free models)"""
+    if not OPENROUTER_API_KEY:
+        return None
+    
+    model = random.choice(OPENROUTER_FREE_MODELS)
+    
+    system_prompt = """You are a creative kindergarten teacher assistant. Generate fun, age-appropriate worksheet ideas or activity ideas for children ages 3-6. 
+    - Be specific and detailed
+    - Include the learning objective
+    - Keep ideas simple and executable
+    - Format each idea on its own line
+    - For worksheets: include the category focus (letters, numbers, shapes, colors, mazes, coloring)
+    - For activities: include materials needed and estimated time"""
+    
+    try:
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost:8765",
+                "X-Title": "Kindergarten Teacher Tools"
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 500,
+                "temperature": 0.9
+            },
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            content = data['choices'][0]['message']['content']
+            # Parse ideas - split by newlines and filter
+            ideas = [line.strip() for line in content.split('\n') if line.strip()]
+            return ideas[:count]
+        else:
+            print(f"OpenRouter error: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        print(f"OpenRouter exception: {e}")
+        return None
+
 @app.get("/api/ideas")
 async def get_ideas(
     type: str = "worksheet",
     theme: str = None,
     count: int = 3
 ):
-    """Get themed ideas"""
+    """Get themed ideas - tries OpenRouter AI first, falls back to hardcoded"""
     if type == "worksheet":
         category = random.choice(list(WORKSHEETS.keys()))
         difficulty = random.choice(["easy", "medium", "hard"])
+        
+        # Try OpenRouter AI first
+        theme_text = f"Generate {count} creative worksheet ideas for kindergarten (ages 3-6) focused on {category} at {difficulty} level."
+        ai_ideas = await generate_ideas_with_openrouter(theme_text, count)
+        
+        if ai_ideas:
+            return {
+                "type": "worksheet",
+                "category": category,
+                "difficulty": difficulty,
+                "ideas": ai_ideas,
+                "source": "openrouter",
+                "model": "gemma-3-4b-it:free",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Fallback to hardcoded ideas
         ideas = random.sample(WORKSHEETS[category][difficulty], min(count, 3))
-        return {"type": "worksheet", "category": category, "difficulty": difficulty, "ideas": ideas}
+        return {
+            "type": "worksheet",
+            "category": category,
+            "difficulty": difficulty,
+            "ideas": ideas,
+            "source": "hardcoded",
+            "timestamp": datetime.now().isoformat()
+        }
     elif type == "activity":
         cat = random.choice(list(ACTIVITIES.keys()))
+        
+        # Try OpenRouter AI first
+        theme_text = f"Generate {count} creative indoor activity ideas for kindergarten (ages 3-6) that are {cat} and take about 15 minutes."
+        ai_ideas = await generate_ideas_with_openrouter(theme_text, count)
+        
+        if ai_ideas:
+            return {
+                "type": "activity",
+                "category": cat,
+                "activities": [{"name": idea, "description": idea, "source": "openrouter"} for idea in ai_ideas],
+                "source": "openrouter",
+                "model": "gemma-3-4b-it:free",
+                "timestamp": datetime.now().isoformat()
+            }
+        
+        # Fallback to hardcoded activities
         acts = random.sample(ACTIVITIES[cat], min(count, len(ACTIVITIES[cat])))
-        return {"type": "activity", "category": cat, "activities": acts}
+        return {"type": "activity", "category": cat, "activities": acts, "source": "hardcoded"}
     else:
         raise HTTPException(400, f"Unknown type: {type}")
 
